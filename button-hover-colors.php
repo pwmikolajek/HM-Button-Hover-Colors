@@ -27,6 +27,13 @@ class Button_Hover_Colors {
 	// -------------------------------------------------------------------------
 
 	public function enqueue_editor_assets() {
+		wp_enqueue_style(
+			'bhc-editor',
+			plugin_dir_url( __FILE__ ) . 'assets/editor.css',
+			array(),
+			'1.0.0'
+		);
+
 		wp_enqueue_script(
 			'bhc-editor',
 			plugin_dir_url( __FILE__ ) . 'assets/editor.js',

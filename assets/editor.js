@@ -240,11 +240,23 @@
 		];
 
 		if ( ColorGradientSettingsDropdown && colorProps.colors ) {
-			// Render bare rows — no wrapper panel — so they appear inline
-			// inside the existing Elements inner wrapper alongside Text/Background.
+			// ColorGradientSettingsDropdown requires a ToolsPanel ancestor for
+			// context. We render one but hide its header so it merges visually
+			// with the Elements panel above.
 			return createElement(
-				Fragment,
-				null,
+				wp.components.__experimentalToolsPanel,
+				{
+					label: 'Hover Colors',
+					resetAll: function () {
+						props.onChange( { hoverText: '', hoverBg: '' } );
+					},
+					panelId: panelId,
+					hasInnerWrapper: true,
+					headingLevel: 3,
+					className: 'color-block-support-panel bhc-hover-panel',
+					__experimentalFirstVisibleItemClass: 'first',
+					__experimentalLastVisibleItemClass: 'last',
+				},
 				settings.map( function ( setting, index ) {
 					return createElement( ColorGradientSettingsDropdown, Object.assign(
 						{},
@@ -262,11 +274,11 @@
 			);
 		}
 
-		// Fallback: bare ColorPalette rows
+		// Fallback: simple ColorPalette rows
 		var ColorPalette = wp.components.ColorPalette;
 		return createElement(
-			Fragment,
-			null,
+			'div',
+			{ className: 'color-block-support-panel bhc-hover-panel' },
 			createElement( 'p', { style: { fontWeight: 600, marginBottom: 4, fontSize: '12px', padding: '0 16px' } }, 'Text Hover' ),
 			createElement( ColorPalette, {
 				value: props.hoverText,
@@ -336,28 +348,26 @@
 		useEffect( function () {
 			var container = null;
 
-			function getInnerWrapper() {
-				// ColorToolsPanel renders an inner wrapper div with class
-				// "color-block-support-panel__inner-wrapper" that contains
-				// the Text and Background rows. We append our rows there.
-				var wrappers = document.querySelectorAll( '.color-block-support-panel__inner-wrapper' );
-				for ( var i = 0; i < wrappers.length; i++ ) {
-					var screen = wrappers[ i ].closest(
+			function getColorPanel() {
+				// Find the Elements color panel on the Button styles screen.
+				var panels = document.querySelectorAll( '.color-block-support-panel' );
+				for ( var i = 0; i < panels.length; i++ ) {
+					var screen = panels[ i ].closest(
 						'.edit-site-global-styles-sidebar__navigator-screen'
 					);
 					if ( ! screen ) continue;
 					var heading = screen.querySelector( 'h2.edit-site-global-styles-header' );
 					if ( heading && heading.textContent.trim() === 'Button' ) {
-						return wrappers[ i ];
+						return panels[ i ];
 					}
 				}
 				return null;
 			}
 
 			function mountPortal() {
-				var innerWrapper = getInnerWrapper();
+				var colorPanel = getColorPanel();
 
-				if ( ! innerWrapper ) {
+				if ( ! colorPanel ) {
 					if ( container ) {
 						container.remove();
 						container = null;
@@ -366,8 +376,8 @@
 					return;
 				}
 
-				// Already mounted inside this wrapper
-				if ( container && innerWrapper.contains( container ) ) return;
+				// Already mounted right after this panel
+				if ( container && colorPanel.nextSibling === container ) return;
 
 				// Remove stale container
 				if ( container ) {
@@ -378,8 +388,7 @@
 
 				container = document.createElement( 'div' );
 				container.className = 'bhc-global-styles-portal';
-				// Append inside the inner wrapper alongside Text / Background rows
-				innerWrapper.appendChild( container );
+				colorPanel.parentNode.insertBefore( container, colorPanel.nextSibling );
 				setPortalTarget( container );
 			}
 

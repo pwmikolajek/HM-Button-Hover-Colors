@@ -1,0 +1,12 @@
+/* Hide the ToolsPanel header on our hover panel so it merges
+   visually with the Elements panel directly above it. */
+.bhc-hover-panel > .components-tools-panel__header {
+	display: none;
+}
+
+/* Remove the top gap/border so the rows sit flush below Background */
+.bhc-hover-panel {
+	margin-top: 0 !important;
+	border-top: none !important;
+	padding-top: 0 !important;
+}
