@@ -240,50 +240,40 @@
 		];
 
 		if ( ColorGradientSettingsDropdown && colorProps.colors ) {
+			// Render bare rows — no wrapper panel — so they appear inline
+			// inside the existing Elements inner wrapper alongside Text/Background.
 			return createElement(
-				// Wrap in a div matching WP's tools panel structure so it blends in
-				'div',
-				{ className: 'bhc-global-hover-panel' },
-				createElement(
-					wp.components.__experimentalToolsPanel,
-					{
-						label: 'Hover Colors',
-						resetAll: function () {
-							props.onChange( { hoverText: '', hoverBg: '' } );
-						},
-						panelId: panelId,
-					},
-					settings.map( function ( setting, index ) {
-						return createElement( ColorGradientSettingsDropdown, Object.assign(
-							{},
-							colorProps,
-							{
-								key: index,
-								panelId: panelId,
-								settings: [ setting ],
-								__experimentalIsRenderedInSidebar: true,
-								disableCustomColors: false,
-								disableCustomGradients: true,
-							}
-						) );
-					} )
-				)
+				Fragment,
+				null,
+				settings.map( function ( setting, index ) {
+					return createElement( ColorGradientSettingsDropdown, Object.assign(
+						{},
+						colorProps,
+						{
+							key: index,
+							panelId: panelId,
+							settings: [ setting ],
+							__experimentalIsRenderedInSidebar: true,
+							disableCustomColors: false,
+							disableCustomGradients: true,
+						}
+					) );
+				} )
 			);
 		}
 
-		// Fallback
+		// Fallback: bare ColorPalette rows
 		var ColorPalette = wp.components.ColorPalette;
 		return createElement(
-			'div',
-			{ style: { padding: '16px' } },
-			createElement( 'h2', { style: { fontSize: '11px', fontWeight: 500, textTransform: 'uppercase', marginBottom: '12px' } }, 'Hover Colors' ),
-			createElement( 'p', { style: { fontWeight: 600, marginBottom: 4, fontSize: '12px' } }, 'Text Hover' ),
+			Fragment,
+			null,
+			createElement( 'p', { style: { fontWeight: 600, marginBottom: 4, fontSize: '12px', padding: '0 16px' } }, 'Text Hover' ),
 			createElement( ColorPalette, {
 				value: props.hoverText,
 				onChange: function ( c ) { props.onChange( { hoverText: c || '', hoverBg: props.hoverBg } ); },
 				clearable: true,
 			} ),
-			createElement( 'p', { style: { fontWeight: 600, marginTop: 12, marginBottom: 4, fontSize: '12px' } }, 'Background Hover' ),
+			createElement( 'p', { style: { fontWeight: 600, marginTop: 12, marginBottom: 4, fontSize: '12px', padding: '0 16px' } }, 'Background Hover' ),
 			createElement( ColorPalette, {
 				value: props.hoverBg,
 				onChange: function ( c ) { props.onChange( { hoverBg: c || '', hoverText: props.hoverText } ); },
@@ -346,28 +336,28 @@
 		useEffect( function () {
 			var container = null;
 
-			function getColorPanel() {
-				// ColorToolsPanel renders with label "Elements" and class
-				// "color-block-support-panel", but only on the Button screen.
-				// Confirm by checking the navigator screen heading says "Button".
-				var panels = document.querySelectorAll( '.color-block-support-panel' );
-				for ( var i = 0; i < panels.length; i++ ) {
-					var screen = panels[ i ].closest(
+			function getInnerWrapper() {
+				// ColorToolsPanel renders an inner wrapper div with class
+				// "color-block-support-panel__inner-wrapper" that contains
+				// the Text and Background rows. We append our rows there.
+				var wrappers = document.querySelectorAll( '.color-block-support-panel__inner-wrapper' );
+				for ( var i = 0; i < wrappers.length; i++ ) {
+					var screen = wrappers[ i ].closest(
 						'.edit-site-global-styles-sidebar__navigator-screen'
 					);
 					if ( ! screen ) continue;
 					var heading = screen.querySelector( 'h2.edit-site-global-styles-header' );
 					if ( heading && heading.textContent.trim() === 'Button' ) {
-						return panels[ i ];
+						return wrappers[ i ];
 					}
 				}
 				return null;
 			}
 
 			function mountPortal() {
-				var colorPanel = getColorPanel();
+				var innerWrapper = getInnerWrapper();
 
-				if ( ! colorPanel ) {
+				if ( ! innerWrapper ) {
 					if ( container ) {
 						container.remove();
 						container = null;
@@ -376,8 +366,8 @@
 					return;
 				}
 
-				// Already mounted after this exact color panel
-				if ( container && colorPanel.nextSibling === container ) return;
+				// Already mounted inside this wrapper
+				if ( container && innerWrapper.contains( container ) ) return;
 
 				// Remove stale container
 				if ( container ) {
@@ -388,8 +378,8 @@
 
 				container = document.createElement( 'div' );
 				container.className = 'bhc-global-styles-portal';
-				// Insert immediately after the Elements color panel
-				colorPanel.parentNode.insertBefore( container, colorPanel.nextSibling );
+				// Append inside the inner wrapper alongside Text / Background rows
+				innerWrapper.appendChild( container );
 				setPortalTarget( container );
 			}
 
