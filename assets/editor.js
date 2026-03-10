@@ -346,29 +346,28 @@
 		useEffect( function () {
 			var container = null;
 
-			function getButtonScreen() {
-				// ScreenBlock renders as a Fragment inside a navigator screen div:
-				// .edit-site-global-styles-sidebar__navigator-screen
-				// We detect it by finding the h2.edit-site-global-styles-header
-				// whose text is "Button" and that has a sibling block preview panel.
-				var headings = document.querySelectorAll( 'h2.edit-site-global-styles-header' );
-				for ( var i = 0; i < headings.length; i++ ) {
-					if ( headings[ i ].textContent.trim() === 'Button' ) {
-						var screen = headings[ i ].closest(
-							'.edit-site-global-styles-sidebar__navigator-screen'
-						);
-						if ( screen && screen.querySelector( '.edit-site-global-styles__block-preview-panel' ) ) {
-							return screen;
-						}
+			function getColorPanel() {
+				// ColorToolsPanel renders with label "Elements" and class
+				// "color-block-support-panel", but only on the Button screen.
+				// Confirm by checking the navigator screen heading says "Button".
+				var panels = document.querySelectorAll( '.color-block-support-panel' );
+				for ( var i = 0; i < panels.length; i++ ) {
+					var screen = panels[ i ].closest(
+						'.edit-site-global-styles-sidebar__navigator-screen'
+					);
+					if ( ! screen ) continue;
+					var heading = screen.querySelector( 'h2.edit-site-global-styles-header' );
+					if ( heading && heading.textContent.trim() === 'Button' ) {
+						return panels[ i ];
 					}
 				}
 				return null;
 			}
 
 			function mountPortal() {
-				var screen = getButtonScreen();
+				var colorPanel = getColorPanel();
 
-				if ( ! screen ) {
+				if ( ! colorPanel ) {
 					if ( container ) {
 						container.remove();
 						container = null;
@@ -377,10 +376,10 @@
 					return;
 				}
 
-				// Already mounted in this screen
-				if ( container && screen.contains( container ) ) return;
+				// Already mounted after this exact color panel
+				if ( container && colorPanel.nextSibling === container ) return;
 
-				// Remove stale container if screen changed
+				// Remove stale container
 				if ( container ) {
 					container.remove();
 					container = null;
@@ -389,7 +388,8 @@
 
 				container = document.createElement( 'div' );
 				container.className = 'bhc-global-styles-portal';
-				screen.appendChild( container );
+				// Insert immediately after the Elements color panel
+				colorPanel.parentNode.insertBefore( container, colorPanel.nextSibling );
 				setPortalTarget( container );
 			}
 
