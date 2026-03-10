@@ -4,13 +4,17 @@
 	var addFilter                           = wp.hooks.addFilter;
 	var createElement                       = wp.element.createElement;
 	var Fragment                            = wp.element.Fragment;
+	var useState                            = wp.element.useState;
+	var useEffect                           = wp.element.useEffect;
+	var useCallback                         = wp.element.useCallback;
+	var createPortal                        = wp.element.createPortal;
 	var createHigherOrderComponent          = wp.compose.createHigherOrderComponent;
 	var InspectorControls                   = wp.blockEditor.InspectorControls;
 	var ColorGradientSettingsDropdown       = wp.blockEditor.__experimentalColorGradientSettingsDropdown;
 	var useMultipleOriginColorsAndGradients = wp.blockEditor.__experimentalUseMultipleOriginColorsAndGradients;
-	// useStyleOverride injects CSS into the editor iframe (WP 6.3+).
-	// Fall back to a no-op so it can always be called unconditionally.
-	var useStyleOverride = wp.blockEditor.useStyleOverride || function () {};
+	var useStyleOverride                    = wp.blockEditor.useStyleOverride || function () {};
+	var registerPlugin                      = wp.plugins.registerPlugin;
+	var apiFetch                            = wp.apiFetch;
 
 	// -------------------------------------------------------------------------
 	// Filter 1: Register hover color attributes on core/button
@@ -40,7 +44,7 @@
 	);
 
 	// -------------------------------------------------------------------------
-	// Filter 2: Add hover controls inside Styles > Color section
+	// Filter 2: Add hover controls inside Styles > Color section (block editor)
 	// -------------------------------------------------------------------------
 
 	addFilter(
@@ -193,5 +197,227 @@
 			} );
 		}
 	);
+
+	// -------------------------------------------------------------------------
+	// Global hover color panel — renders inside Styles → Blocks → Button
+	// via a React portal mounted into the ScreenBlock container.
+	// -------------------------------------------------------------------------
+
+	/**
+	 * The color picker panel content — same ColorGradientSettingsDropdown
+	 * interface as the per-block controls but reads/writes wp_options via REST.
+	 */
+	function GlobalHoverPanel( props ) {
+		var colorProps = useMultipleOriginColorsAndGradients
+			? useMultipleOriginColorsAndGradients()
+			: {};
+
+		var panelId = 'bhc-global-hover';
+
+		var settings = [
+			{
+				label: 'Text Hover',
+				colorValue: props.hoverText,
+				onColorChange: function ( color ) {
+					props.onChange( { hoverText: color || '', hoverBg: props.hoverBg } );
+				},
+				isShownByDefault: true,
+				resetAllFilter: function () {
+					props.onChange( { hoverText: '', hoverBg: props.hoverBg } );
+				},
+			},
+			{
+				label: 'Background Hover',
+				colorValue: props.hoverBg,
+				onColorChange: function ( color ) {
+					props.onChange( { hoverBg: color || '', hoverText: props.hoverText } );
+				},
+				isShownByDefault: true,
+				resetAllFilter: function () {
+					props.onChange( { hoverBg: '', hoverText: props.hoverText } );
+				},
+			},
+		];
+
+		if ( ColorGradientSettingsDropdown && colorProps.colors ) {
+			return createElement(
+				// Wrap in a div matching WP's tools panel structure so it blends in
+				'div',
+				{ className: 'bhc-global-hover-panel' },
+				createElement(
+					wp.components.__experimentalToolsPanel,
+					{
+						label: 'Hover Colors',
+						resetAll: function () {
+							props.onChange( { hoverText: '', hoverBg: '' } );
+						},
+						panelId: panelId,
+					},
+					settings.map( function ( setting, index ) {
+						return createElement( ColorGradientSettingsDropdown, Object.assign(
+							{},
+							colorProps,
+							{
+								key: index,
+								panelId: panelId,
+								settings: [ setting ],
+								__experimentalIsRenderedInSidebar: true,
+								disableCustomColors: false,
+								disableCustomGradients: true,
+							}
+						) );
+					} )
+				)
+			);
+		}
+
+		// Fallback
+		var ColorPalette = wp.components.ColorPalette;
+		return createElement(
+			'div',
+			{ style: { padding: '16px' } },
+			createElement( 'h2', { style: { fontSize: '11px', fontWeight: 500, textTransform: 'uppercase', marginBottom: '12px' } }, 'Hover Colors' ),
+			createElement( 'p', { style: { fontWeight: 600, marginBottom: 4, fontSize: '12px' } }, 'Text Hover' ),
+			createElement( ColorPalette, {
+				value: props.hoverText,
+				onChange: function ( c ) { props.onChange( { hoverText: c || '', hoverBg: props.hoverBg } ); },
+				clearable: true,
+			} ),
+			createElement( 'p', { style: { fontWeight: 600, marginTop: 12, marginBottom: 4, fontSize: '12px' } }, 'Background Hover' ),
+			createElement( ColorPalette, {
+				value: props.hoverBg,
+				onChange: function ( c ) { props.onChange( { hoverBg: c || '', hoverText: props.hoverText } ); },
+				clearable: true,
+			} )
+		);
+	}
+
+	/**
+	 * Plugin component — mounts a portal into the Styles → Blocks → Button
+	 * screen by observing the DOM for the block preview panel container.
+	 *
+	 * Detection: the preview panel div has class
+	 * `edit-site-global-styles__block-preview-panel` and its sibling
+	 * `.edit-site-global-styles-screen` contains all the style panels.
+	 * We look for the heading text "Button" in the screen header to confirm
+	 * we're on the core/button styles screen.
+	 */
+	function BhcGlobalStylesPlugin() {
+		var _useState   = useState( null );
+		var portalTarget = _useState[0];
+		var setPortalTarget = _useState[1];
+
+		var _useState2  = useState( ( window.bhcData && window.bhcData.fillHoverText ) || '' );
+		var hoverText   = _useState2[0];
+		var setHoverText = _useState2[1];
+
+		var _useState3  = useState( ( window.bhcData && window.bhcData.fillHoverBg ) || '' );
+		var hoverBg     = _useState3[0];
+		var setHoverBg  = _useState3[1];
+
+		// Mutable ref for debounce timer (avoids re-renders)
+		var saveTimerRef = wp.element.useRef( null );
+
+		var save = function ( values ) {
+			var newText = values.hoverText !== undefined ? values.hoverText : hoverText;
+			var newBg   = values.hoverBg   !== undefined ? values.hoverBg   : hoverBg;
+
+			// Update local state immediately for responsive UI
+			if ( values.hoverText !== undefined ) setHoverText( newText );
+			if ( values.hoverBg   !== undefined ) setHoverBg( newBg );
+
+			// Debounced REST save
+			clearTimeout( saveTimerRef.current );
+			saveTimerRef.current = setTimeout( function () {
+				var data = window.bhcData || {};
+				apiFetch( {
+					url: data.restUrl,
+					method: 'POST',
+					headers: { 'X-WP-Nonce': data.nonce },
+					data: {
+						fillHoverText:  newText,
+						fillHoverBg:    newBg,
+						outlineHoverBg: data.outlineHoverBg || '',
+					},
+				} );
+			}, 600 );
+		};
+
+		useEffect( function () {
+			var container = null;
+
+			function isButtonScreen() {
+				// The Styles → Blocks → Button screen renders a preview panel
+				// and has a heading with the block title.
+				var preview = document.querySelector( '.edit-site-global-styles__block-preview-panel' );
+				if ( ! preview ) return false;
+				// The header sits inside the same .edit-site-global-styles-screen
+				var screen = preview.closest( '.edit-site-global-styles-screen' ) ||
+				             preview.parentElement;
+				if ( ! screen ) return false;
+				// Look for a heading that says "Button"
+				var heading = screen.querySelector( 'h2' );
+				return heading && heading.textContent.trim() === 'Button';
+			}
+
+			function mountPortal() {
+				if ( ! isButtonScreen() ) {
+					if ( container ) {
+						container.remove();
+						container = null;
+						setPortalTarget( null );
+					}
+					return;
+				}
+
+				if ( container ) return; // already mounted
+
+				// Find the .edit-site-global-styles-screen to append our panel
+				var preview = document.querySelector( '.edit-site-global-styles__block-preview-panel' );
+				var screen  = preview && (
+					preview.closest( '.edit-site-global-styles-screen' ) ||
+					preview.parentElement
+				);
+				if ( ! screen ) return;
+
+				container = document.createElement( 'div' );
+				container.className = 'bhc-global-styles-portal';
+				screen.appendChild( container );
+				setPortalTarget( container );
+			}
+
+			// Watch for DOM changes to detect navigation between screens
+			var observer = new MutationObserver( function () {
+				mountPortal();
+			} );
+
+			observer.observe( document.body, { childList: true, subtree: true } );
+
+			// Run once immediately in case we start on the button screen
+			mountPortal();
+
+			return function () {
+				observer.disconnect();
+				if ( container ) container.remove();
+			};
+		}, [] );
+
+		if ( ! portalTarget ) {
+			return null;
+		}
+
+		return createPortal(
+			createElement( GlobalHoverPanel, {
+				hoverText: hoverText,
+				hoverBg:   hoverBg,
+				onChange:  save,
+			} ),
+			portalTarget
+		);
+	}
+
+	registerPlugin( 'bhc-global-styles', {
+		render: BhcGlobalStylesPlugin,
+	} );
 
 }());

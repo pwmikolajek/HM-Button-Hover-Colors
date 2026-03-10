@@ -19,8 +19,7 @@ class Button_Hover_Colors {
 		add_action( 'wp_enqueue_scripts',          array( $this, 'enqueue_frontend_assets' ) );
 		add_action( 'wp_head',                     array( $this, 'output_global_css' ), 20 );
 		add_filter( 'render_block_core/button',    array( $this, 'inject_hover_style' ), 10, 2 );
-		add_action( 'admin_menu',                  array( $this, 'register_settings_page' ) );
-		add_action( 'admin_init',                  array( $this, 'register_settings' ) );
+		add_action( 'rest_api_init',               array( $this, 'register_rest_routes' ) );
 	}
 
 	// -------------------------------------------------------------------------
@@ -31,7 +30,7 @@ class Button_Hover_Colors {
 		wp_enqueue_script(
 			'bhc-editor',
 			plugin_dir_url( __FILE__ ) . 'assets/editor.js',
-			array( 'wp-blocks', 'wp-element', 'wp-components', 'wp-block-editor', 'wp-compose', 'wp-hooks' ),
+			array( 'wp-blocks', 'wp-element', 'wp-components', 'wp-block-editor', 'wp-compose', 'wp-hooks', 'wp-plugins', 'wp-api-fetch', 'wp-data' ),
 			'1.0.0',
 			true
 		);
@@ -40,7 +39,50 @@ class Button_Hover_Colors {
 			'fillHoverBg'      => get_option( 'bhc_fill_hover_bg', '' ),
 			'outlineHoverBg'   => get_option( 'bhc_outline_hover_bg', '' ),
 			'fillHoverText'    => get_option( 'bhc_fill_hover_text', '' ),
+			'restUrl'          => rest_url( 'bhc/v1/globals' ),
+			'nonce'            => wp_create_nonce( 'wp_rest' ),
 		) );
+	}
+
+	// -------------------------------------------------------------------------
+	// REST API — read / write global hover options
+	// -------------------------------------------------------------------------
+
+	public function register_rest_routes() {
+		register_rest_route( 'bhc/v1', '/globals', array(
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'rest_get_globals' ),
+				'permission_callback' => '__return_true',
+			),
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'rest_save_globals' ),
+				'permission_callback' => function () {
+					return current_user_can( 'edit_theme_options' );
+				},
+				'args' => array(
+					'fillHoverBg'    => array( 'type' => 'string', 'sanitize_callback' => 'sanitize_hex_color', 'default' => '' ),
+					'outlineHoverBg' => array( 'type' => 'string', 'sanitize_callback' => 'sanitize_hex_color', 'default' => '' ),
+					'fillHoverText'  => array( 'type' => 'string', 'sanitize_callback' => 'sanitize_hex_color', 'default' => '' ),
+				),
+			),
+		) );
+	}
+
+	public function rest_get_globals() {
+		return rest_ensure_response( array(
+			'fillHoverBg'    => get_option( 'bhc_fill_hover_bg', '' ),
+			'outlineHoverBg' => get_option( 'bhc_outline_hover_bg', '' ),
+			'fillHoverText'  => get_option( 'bhc_fill_hover_text', '' ),
+		) );
+	}
+
+	public function rest_save_globals( $request ) {
+		update_option( 'bhc_fill_hover_bg',    $request->get_param( 'fillHoverBg' ) );
+		update_option( 'bhc_outline_hover_bg', $request->get_param( 'outlineHoverBg' ) );
+		update_option( 'bhc_fill_hover_text',  $request->get_param( 'fillHoverText' ) );
+		return rest_ensure_response( array( 'success' => true ) );
 	}
 
 	// -------------------------------------------------------------------------
@@ -130,164 +172,6 @@ class Button_Hover_Colors {
 		return $block_content;
 	}
 
-	// -------------------------------------------------------------------------
-	// Admin settings page
-	// -------------------------------------------------------------------------
-
-	public function register_settings_page() {
-		add_options_page(
-			__( 'Button Hover Colors', 'button-hover-colors' ),
-			__( 'Button Hover Colors', 'button-hover-colors' ),
-			'manage_options',
-			'button-hover-colors',
-			array( $this, 'render_settings_page' )
-		);
-	}
-
-	public function register_settings() {
-		register_setting( 'bhc_settings', 'bhc_fill_hover_bg', array(
-			'type'              => 'string',
-			'sanitize_callback' => 'sanitize_hex_color',
-			'default'           => '',
-		) );
-
-		register_setting( 'bhc_settings', 'bhc_outline_hover_bg', array(
-			'type'              => 'string',
-			'sanitize_callback' => 'sanitize_hex_color',
-			'default'           => '',
-		) );
-
-		register_setting( 'bhc_settings', 'bhc_fill_hover_text', array(
-			'type'              => 'string',
-			'sanitize_callback' => 'sanitize_hex_color',
-			'default'           => '',
-		) );
-
-		add_settings_section(
-			'bhc_main',
-			__( 'Global Defaults', 'button-hover-colors' ),
-			array( $this, 'render_section_description' ),
-			'button-hover-colors'
-		);
-
-		add_settings_field(
-			'bhc_fill_hover_bg',
-			__( 'Fill Button Hover Background', 'button-hover-colors' ),
-			array( $this, 'render_fill_field' ),
-			'button-hover-colors',
-			'bhc_main'
-		);
-
-		add_settings_field(
-			'bhc_outline_hover_bg',
-			__( 'Outline Button Hover Background', 'button-hover-colors' ),
-			array( $this, 'render_outline_field' ),
-			'button-hover-colors',
-			'bhc_main'
-		);
-
-		add_settings_field(
-			'bhc_fill_hover_text',
-			__( 'Button Hover Text Color', 'button-hover-colors' ),
-			array( $this, 'render_fill_text_field' ),
-			'button-hover-colors',
-			'bhc_main'
-		);
-	}
-
-	public function render_section_description() {
-		echo '<p>' . esc_html__( 'Set site-wide hover background colors for button blocks. Individual buttons can override these defaults using the Hover Color panel in the block sidebar.', 'button-hover-colors' ) . '</p>';
-	}
-
-	public function render_fill_field() {
-		$value = get_option( 'bhc_fill_hover_bg', '' );
-		$this->render_color_field( 'bhc_fill_hover_bg', $value );
-	}
-
-	public function render_outline_field() {
-		$value = get_option( 'bhc_outline_hover_bg', '' );
-		$this->render_color_field( 'bhc_outline_hover_bg', $value );
-	}
-
-	public function render_fill_text_field() {
-		$value = get_option( 'bhc_fill_hover_text', '' );
-		$this->render_color_field( 'bhc_fill_hover_text', $value );
-	}
-
-	private function render_color_field( $name, $value ) {
-		$id          = esc_attr( $name );
-		$safe_value  = esc_attr( $value );
-		$input_value = $value ? $safe_value : '#000000';
-		?>
-		<div style="display:flex;align-items:center;gap:10px;">
-			<input
-				type="color"
-				id="<?php echo $id; ?>_picker"
-				value="<?php echo esc_attr( $input_value ); ?>"
-				<?php if ( ! $value ) : ?>data-empty="1"<?php endif; ?>
-				style="width:50px;height:36px;padding:2px;border:1px solid #8c8f94;border-radius:3px;cursor:pointer;"
-			>
-			<input
-				type="text"
-				id="<?php echo $id; ?>"
-				name="<?php echo $id; ?>"
-				value="<?php echo $safe_value; ?>"
-				placeholder="<?php esc_attr_e( 'e.g. #FF5733 — leave blank to disable', 'button-hover-colors' ); ?>"
-				style="width:220px;"
-				class="regular-text"
-			>
-			<button type="button" class="button bhc-clear-color" data-target="<?php echo $id; ?>"><?php esc_html_e( 'Clear', 'button-hover-colors' ); ?></button>
-		</div>
-		<script>
-		(function() {
-			var picker = document.getElementById('<?php echo $id; ?>_picker');
-			var text   = document.getElementById('<?php echo $id; ?>');
-			if (!picker || !text) return;
-
-			picker.addEventListener('input', function() {
-				text.value = picker.value;
-				picker.removeAttribute('data-empty');
-			});
-
-			text.addEventListener('input', function() {
-				var v = text.value.trim();
-				if (/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(v)) {
-					picker.value = v;
-					picker.removeAttribute('data-empty');
-				}
-			});
-
-			var clearBtn = document.querySelector('.bhc-clear-color[data-target="<?php echo $id; ?>"]');
-			if (clearBtn) {
-				clearBtn.addEventListener('click', function() {
-					text.value = '';
-					picker.value = '#000000';
-					picker.setAttribute('data-empty', '1');
-				});
-			}
-		})();
-		</script>
-		<?php
-	}
-
-	public function render_settings_page() {
-		if ( ! current_user_can( 'manage_options' ) ) {
-			return;
-		}
-		?>
-		<div class="wrap">
-			<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
-			<p><?php esc_html_e( 'These colors act as site-wide defaults. You can override the hover color for any individual button block using the "Hover Color" panel in the block editor sidebar.', 'button-hover-colors' ); ?></p>
-			<form action="options.php" method="post">
-				<?php
-				settings_fields( 'bhc_settings' );
-				do_settings_sections( 'button-hover-colors' );
-				submit_button();
-				?>
-			</form>
-		</div>
-		<?php
-	}
 }
 
 new Button_Hover_Colors();
