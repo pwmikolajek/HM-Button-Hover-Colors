@@ -1,0 +1,29 @@
+/* Button Hover Colors — frontend styles */
+
+/* Smooth transition on all buttons */
+.wp-block-button__link {
+	transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/*
+ * !important is required to override WordPress's inline style="background-color:..."
+ * that it sets directly on the <a> tag when a background color is chosen.
+ * The CSS vars are also injected on the <a> tag by the plugin's render filter,
+ * so they are in scope for these rules.
+ */
+
+/* Fill buttons — background hover */
+.wp-block-button:not(.is-style-outline) .wp-block-button__link:hover,
+.wp-block-button.is-style-fill .wp-block-button__link:hover {
+	background-color: var(--bhc-hover-bg, var(--bhc-fill-hover-bg)) !important;
+}
+
+/* Outline buttons — background hover */
+.wp-block-button.is-style-outline .wp-block-button__link:hover {
+	background-color: var(--bhc-hover-bg, var(--bhc-outline-hover-bg)) !important;
+}
+
+/* All buttons — text color hover */
+.wp-block-button .wp-block-button__link:hover {
+	color: var(--bhc-hover-text, var(--bhc-fill-hover-text)) !important;
+}
