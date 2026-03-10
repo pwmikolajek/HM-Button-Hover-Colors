@@ -346,22 +346,29 @@
 		useEffect( function () {
 			var container = null;
 
-			function isButtonScreen() {
-				// The Styles → Blocks → Button screen renders a preview panel
-				// and has a heading with the block title.
-				var preview = document.querySelector( '.edit-site-global-styles__block-preview-panel' );
-				if ( ! preview ) return false;
-				// The header sits inside the same .edit-site-global-styles-screen
-				var screen = preview.closest( '.edit-site-global-styles-screen' ) ||
-				             preview.parentElement;
-				if ( ! screen ) return false;
-				// Look for a heading that says "Button"
-				var heading = screen.querySelector( 'h2' );
-				return heading && heading.textContent.trim() === 'Button';
+			function getButtonScreen() {
+				// ScreenBlock renders as a Fragment inside a navigator screen div:
+				// .edit-site-global-styles-sidebar__navigator-screen
+				// We detect it by finding the h2.edit-site-global-styles-header
+				// whose text is "Button" and that has a sibling block preview panel.
+				var headings = document.querySelectorAll( 'h2.edit-site-global-styles-header' );
+				for ( var i = 0; i < headings.length; i++ ) {
+					if ( headings[ i ].textContent.trim() === 'Button' ) {
+						var screen = headings[ i ].closest(
+							'.edit-site-global-styles-sidebar__navigator-screen'
+						);
+						if ( screen && screen.querySelector( '.edit-site-global-styles__block-preview-panel' ) ) {
+							return screen;
+						}
+					}
+				}
+				return null;
 			}
 
 			function mountPortal() {
-				if ( ! isButtonScreen() ) {
+				var screen = getButtonScreen();
+
+				if ( ! screen ) {
 					if ( container ) {
 						container.remove();
 						container = null;
@@ -370,15 +377,15 @@
 					return;
 				}
 
-				if ( container ) return; // already mounted
+				// Already mounted in this screen
+				if ( container && screen.contains( container ) ) return;
 
-				// Find the .edit-site-global-styles-screen to append our panel
-				var preview = document.querySelector( '.edit-site-global-styles__block-preview-panel' );
-				var screen  = preview && (
-					preview.closest( '.edit-site-global-styles-screen' ) ||
-					preview.parentElement
-				);
-				if ( ! screen ) return;
+				// Remove stale container if screen changed
+				if ( container ) {
+					container.remove();
+					container = null;
+					setPortalTarget( null );
+				}
 
 				container = document.createElement( 'div' );
 				container.className = 'bhc-global-styles-portal';
@@ -387,10 +394,7 @@
 			}
 
 			// Watch for DOM changes to detect navigation between screens
-			var observer = new MutationObserver( function () {
-				mountPortal();
-			} );
-
+			var observer = new MutationObserver( mountPortal );
 			observer.observe( document.body, { childList: true, subtree: true } );
 
 			// Run once immediately in case we start on the button screen
